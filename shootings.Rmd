@@ -1,0 +1,145 @@
+---
+title: "NYPD Shooting Incident Data Report"
+date: "6/10/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Import Library
+
+```{r library, message=FALSE, warning=FALSE}
+# install.packages("tidyverse")
+library(tidyverse)
+```
+
+## Read Data
+
+```{r load}
+df = read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+head(df)
+```
+
+## Eliminate unneeded columns 
+
+```{r}
+df_2 = df %>% select(INCIDENT_KEY, 
+                   OCCUR_DATE,
+                   OCCUR_TIME,
+                   BORO, 
+                   STATISTICAL_MURDER_FLAG,
+                   PERP_AGE_GROUP,
+                   PERP_SEX,
+                   PERP_RACE,
+                   VIC_AGE_GROUP,
+                   VIC_SEX,
+                   VIC_RACE,
+                   Latitude,
+                   Longitude)
+
+# Return column name + missing values
+lapply(df_2, function(x) sum(is.na(x)))
+
+# Transform
+df_2 = df_2 %>% 
+  replace_na(list(PERP_AGE_GROUP = "Unknown", PERP_SEX = "Unknown", PERP_RACE = "Unknown"))
+
+df_2$PERP_AGE_GROUP = recode(df_2$PERP_AGE_GROUP, UNKNOWN = "Unknown")
+df_2$PERP_SEX = recode(df_2$PERP_SEX, U = "Unknown")
+df_2$PERP_RACE = recode(df_2$PERP_RACE, UNKNOWN = "Unknown")
+df_2$VIC_SEX   = recode(df_2$VIC_SEX, U = "Unknown")
+df_2$VIC_RACE   = recode(df_2$VIC_RACE, UNKNOWN = "Unknown")
+df_2$INCIDENT_KEY = as.character(df_2$INCIDENT_KEY)
+df_2$BORO = as.factor(df_2$BORO)
+df_2$VIC_AGE_GROUP = as.factor(df_2$VIC_AGE_GROUP)
+df_2$VIC_SEX = as.factor(df_2$VIC_SEX)
+df_2$VIC_RACE = as.factor(df_2$VIC_RACE)
+df_2$PERP_AGE_GROUP = as.factor(df_2$PERP_AGE_GROUP)
+df_2$PERP_SEX = as.factor(df_2$PERP_SEX)
+df_2$PERP_RACE = as.factor(df_2$PERP_RACE)
+
+
+
+```
+
+## Graph
+
+
+1. Looking at the incidents, how many occurred in each borough? What portion of shootings results in deaths? This information can be conveyed in a single graph. 
+
+```
+
+```{r}
+df_2$STATISTICAL_MURDER_FLAG <- as.factor(df_2$STATISTICAL_MURDER_FLAG)
+
+g_stacked_bar <- ggplot(df_2, aes(x = BORO, fill = STATISTICAL_MURDER_FLAG)) +
+  geom_bar(position = "stack") +
+  labs(title = "Portion of shootings per burrough that were fatal",
+       x = "Boroughs",
+       y = "Count") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+g_stacked_bar
+```
+
+
+2. What hour and day should people in New York be cautious of when it comes to shooting crimes? 
+
+
+
+```{r}
+df_2$OCCUR_DAY = mdy(df_2$OCCUR_DATE)
+df_2$OCCUR_DAY = wday(df_2$OCCUR_DAY, label = TRUE)
+df_2$OCCUR_HOUR = hour(hms(as.character(df_2$OCCUR_TIME)))
+
+df_3 = df_2 %>%
+  group_by(OCCUR_DAY) %>%
+  count()
+
+df_4 = df_2 %>%
+  group_by(OCCUR_HOUR) %>%
+  count()
+```
+
+```{r}
+g <- ggplot(df_3, aes(x = OCCUR_DAY, y = n)) +
+  geom_col() +
+  labs(title = "Which day should people in New York be cautious of incidents?",
+       x = "Incident Occurence Day",
+       y = "Count of Incidents") +
+  theme_minimal()
+g
+```
+```{r}
+g <- ggplot(df_4, aes(x = OCCUR_HOUR, y = n)) +
+  geom_col() +
+  labs(title = "Which time should people in New York be cautious of incidents?",
+       x = "Incident Occurence Hour",
+       y = "Count of Incidents") +
+  theme_minimal()
+g
+```
+
+#Analyze 
+
+We want to try to see if borough and age grouop have a statistically significant effect on the odds of of an incident being classified as a murder. 
+
+```{r}
+# Choose logistic regression model and parameters
+model_age_victim <- glm(STATISTICAL_MURDER_FLAG ~ BORO + PERP_AGE_GROUP + VIC_AGE_GROUP, 
+                        data = df_2, 
+                        family = "binomial")
+
+# Display summary
+summary(model_age_victim)
+```
+
+For Manhattan the negative coefficient suggests shootings there were less likely to result in fatilities. Regarding victim and perpetrator ages, curiously as both victims and perpetrators get older, chances of fatalities increase. 
+
+Sources of bias in this analysis would include age group bias (confounding variables like older people are more likely to succumb to injuries), geopgraphic bias, and causation vs correlation. Perhaps older people were involved in more shootings and deaths, not because older people are more prone to this, but because education is different for younger people. 
+
